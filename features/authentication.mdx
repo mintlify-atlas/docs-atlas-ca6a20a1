@@ -63,7 +63,7 @@ Authentication is entirely session-based. On a successful login, Laravel creates
   </Step>
 
   <Step title="Session is created">
-    On success, a new session is started, the user is marked as authenticated, and the browser receives a session cookie. The user is redirected to their intended destination (or `/dashboard` by default).
+    On success, a new session is started, the user is marked as authenticated, and the browser receives a session cookie. The user is redirected to their intended destination (or `/tasks/index` by default — the `task.index` named route as configured in `AuthenticatedSessionController`).
   </Step>
 
   <Step title="Access protected routes">

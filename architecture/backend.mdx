@@ -280,8 +280,12 @@ Inertia.js (`inertiajs/inertia-laravel` ^1.0) is used for two server-rendered pa
 
 | Route | Inertia component |
 |---|---|
-| `GET /` | `Auth:Login` — the login page with optional registration link, Laravel version, and PHP version passed as props |
+| `GET /` | `Auth/Login` — the login page with optional registration link, served by `AuthenticatedSessionController@create` |
 | `GET /dashboard` | `Dashboard` — the authenticated user dashboard |
+
+<Note>
+  The root route closure in `routes/web.php` calls `Inertia::render('Auth:Login', ...)` with a colon separator — this is a typo in the source. The actual `AuthenticatedSessionController@create` correctly renders `Auth/Login` (forward slash). The login page is functional because `/login` uses the controller, while `/` uses the closure with the typo.
+</Note>
 
 These Inertia pages are separate from the Vue task list. The task list at `GET /tasks` returns a classic Blade view (`resources/views/tasks.blade.php`) which embeds the `#app` element that the Vue app mounts onto.
 

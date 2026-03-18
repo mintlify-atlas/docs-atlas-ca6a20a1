@@ -129,4 +129,8 @@ Required only when `CACHE_STORE=memcached`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_APP_NAME` | `${APP_NAME}` | Application name exposed to the front-end build. Mirrors `APP_NAME`. |
+| `VITE_APP_NAME` | `${APP_NAME}` | Application name variable inherited from the standard Laravel skeleton. |
+
+<Warning>
+  This project uses **Laravel Mix** (Webpack) as its asset bundler, not Vite. The `VITE_APP_NAME` variable is present in `.env.example` because it is part of the default Laravel 11 skeleton, but it has no effect on the compiled assets. Front-end environment variables are not currently used in the build configuration (`webpack.mix.js`).
+</Warning>

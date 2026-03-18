@@ -37,7 +37,7 @@ This endpoint does not return a JSON body. It responds with HTTP redirects.
 
 | Outcome | Redirect |
 |---|---|
-| Successful authentication | `/tasks` |
+| Successful authentication | Intended URL (defaults to `/tasks/index`) |
 | Validation failure | Back to `/login` with errors in the session |
 | Rate limit exceeded (5 failed attempts) | Back to `/login` with a throttle error on `email` |
 
