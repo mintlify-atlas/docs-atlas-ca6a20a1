@@ -1,0 +1,61 @@
+{
+  "projectType": "saas",
+  "projectName": "Prueba Soporte - Task Manager",
+  "projectDescription": "A Laravel 11 + Vue.js task management web application with user authentication, task assignment, and CRUD operations via a JSON API backend.",
+  "theme": "maple",
+  "primaryColor": "#040404",
+  "lightColor": "#ef370f",
+  "darkColor": "#f79d72",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "getting-started/requirements", "getting-started/installation", "getting-started/configuration"]
+          },
+          {
+            "group": "Features",
+            "pages": ["features/authentication", "features/task-management", "features/task-assignment"]
+          },
+          {
+            "group": "Architecture",
+            "pages": ["architecture/overview", "architecture/frontend", "architecture/backend", "architecture/database"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Tasks API",
+            "pages": ["api/overview", "api/tasks/list", "api/tasks/create", "api/tasks/complete", "api/tasks/delete"]
+          },
+          {
+            "group": "Authentication",
+            "pages": ["api/auth/login", "api/auth/register", "api/auth/logout"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "User authentication with Laravel Breeze (login, register, logout)",
+    "Task creation with title, description, and user assignment by email",
+    "Task completion — marks tasks as done and hides them from the active list",
+    "Task deletion with instant UI update via Vuex store",
+    "JSON API backend (Laravel) consumed by Vue.js frontend with Axios",
+    "Vuex state management for reactive task list",
+    "Database schema with tasks table linked to users via foreign key"
+  ],
+  "publicApiSurface": [
+    "GET /tasks/index — List all incomplete tasks",
+    "POST /tasks — Create a new task (title, description, user email)",
+    "PUT /tasks/{id}/complete — Mark a task as completed",
+    "DELETE /tasks/{id} — Delete a task",
+    "GET /profile — View user profile",
+    "PATCH /profile — Update user profile",
+    "DELETE /profile — Delete user account"
+  ]
+}
