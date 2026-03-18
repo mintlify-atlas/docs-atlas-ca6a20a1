@@ -1,0 +1,92 @@
+---
+title: "API overview"
+description: "Overview of the Prueba Soporte task management API, including authentication, endpoints, and response formats."
+---
+
+The Prueba Soporte API is a server-side HTTP API built with Laravel 11. It is consumed internally by the Vue.js frontend via Axios and is not intended as a public API. All endpoints share the same origin as the web application.
+
+## Base URL
+
+All endpoints are relative to the application root. There is no `/api` prefix.
+
+```
+/
+```
+
+## Authentication
+
+Every endpoint is protected by Laravel's `auth` middleware. Requests must originate from an authenticated session.
+
+For AJAX requests made by the Vue.js frontend, CSRF protection is enforced. Include the CSRF token on every mutating request (`POST`, `PUT`, `DELETE`) using one of the following methods:
+
+- **Header:** `X-XSRF-TOKEN: <token>` (Axios reads and sends this automatically from the `XSRF-TOKEN` cookie)
+- **Form field:** `_token=<token>`
+
+<Note>
+  Axios, as configured by Laravel's default scaffold, automatically attaches the `X-XSRF-TOKEN` header by reading the `XSRF-TOKEN` cookie. No manual configuration is required in the frontend.
+</Note>
+
+Unauthenticated requests are redirected to the login page with an HTTP `302` response.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tasks/index` | List all incomplete tasks |
+| `POST` | `/tasks` | Create a new task |
+| `PUT` | `/tasks/{id}/complete` | Mark a task as completed |
+| `DELETE` | `/tasks/{id}` | Permanently delete a task |
+
+## JSON response format
+
+Endpoints that return data respond with `Content-Type: application/json`. The structure varies per endpoint:
+
+- **List:** A bare JSON array of task objects.
+- **Complete:** A JSON object with a `message` string and a `task` object.
+- **Delete:** A JSON object with a `message` string.
+- **Create:** A redirect response (`302`), not JSON. The frontend handles this by calling `fetchTasks` after submission.
+
+Example task object:
+
+```json
+{
+  "id": 1,
+  "user_id": 3,
+  "title": "Review pull request",
+  "description": "Check the open PR for the billing module.",
+  "completed": 0,
+  "created_at": "2026-03-18T10:00:00.000000Z",
+  "updated_at": "2026-03-18T10:00:00.000000Z"
+}
+```
+
+## Error responses
+
+### 404 Not found
+
+Returned when a task with the given `id` does not exist.
+
+```json
+{
+  "error": "Task not found."
+}
+```
+
+### 422 Validation error
+
+Returned when request input fails Laravel's validation rules. The response body follows Laravel's standard validation error shape:
+
+```json
+{
+  "message": "The title field is required.",
+  "errors": {
+    "title": ["The title field is required."],
+    "description": ["The description field is required."],
+    "user": ["The user field must be a valid email address."]
+  }
+}
+```
+
+## Frontend integration
+
+The Vue.js frontend uses a [Vuex](https://vuex.vuejs.org/) store (`resources/js/store.js`) to manage task state. Each store action maps directly to one API endpoint and uses Axios for the HTTP call. The store is the single source of truth for task data in the UI.

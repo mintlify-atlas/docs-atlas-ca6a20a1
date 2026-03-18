@@ -1,0 +1,228 @@
+---
+title: "Task management"
+description: "Creating, completing, and deleting tasks in Prueba Soporte."
+---
+
+Tasks move through a simple lifecycle: they are created with a title, description, and an assigned user, they appear in the active task list, and they are removed from the list when completed or deleted. All task operations go through a Vuex store that communicates with the Laravel backend over HTTP.
+
+## Task lifecycle
+
+<Steps>
+  <Step title="Create a task">
+    The user fills in the task form at the bottom of the task list — providing a title, description, and the email address of the user to assign the task to — then clicks **Add Task**.
+
+    The `addTask` method in `TaskList.vue` validates that all three fields are present, then dispatches the `addTask` action to the Vuex store:
+
+    ```javascript
+    addTask() {
+        if (!this.newTask.title || !this.newTask.description || !this.newTask.user) {
+            alert('Both title and description are required');
+            return;
+        }
+
+        this.$store.dispatch('addTask', this.newTask).then(() => {
+            this.newTask.title = '';
+            this.newTask.description = '';
+            this.newTask.user = '';
+        }).catch(error => {
+            console.error('Error adding task:', error);
+        });
+    },
+    ```
+
+    On success, the form fields are cleared and the new task appears in the list.
+  </Step>
+
+  <Step title="Task appears in the active list">
+    The Vuex store commits the `ADD_TASK` mutation, which appends the new task to the `tasks` array in state. The `v-for` loop in the template renders it immediately:
+
+    ```vue
+    <ul class="list-group mb-4">
+        <li v-for="task in tasks" :key="task.id" class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-1">{{ task.title }}</h5>
+                <p class="mb-1">{{ task.description }}</p>
+                <small class="text-muted">Assigned to: {{ task.user }}</small>
+            </div>
+            <div>
+                <button class="btn btn-success btn-sm mr-2" @click="completeTask(task.id)">Complete</button>
+                <button class="btn btn-danger btn-sm" @click="deleteTask(task.id)">Delete</button>
+            </div>
+        </li>
+    </ul>
+    ```
+
+    <Note>
+      The task list only shows **incomplete** tasks. The backend `index` action filters by `completed = 0`, so any task marked as complete is excluded from the next fetch and disappears from the UI after the store is updated.
+    </Note>
+  </Step>
+
+  <Step title="Complete a task">
+    Clicking **Complete** calls `completeTask(task.id)` on the component, which dispatches to the store:
+
+    ```javascript
+    completeTask(taskId) {
+        this.$store.dispatch('completeTask', taskId).catch(error => {
+            console.error('Error completing task:', error);
+        });
+    },
+    ```
+
+    The store sends a `PUT` request to `/tasks/{id}/complete` and commits the updated task via `UPDATE_TASK`:
+
+    ```javascript
+    completeTask({ commit }, taskId) {
+        axios.put(`/tasks/${taskId}/complete`)
+            .then(response => {
+                commit('UPDATE_TASK', response.data.task);
+            })
+            .catch(error => {
+                console.error("Error completing task:", error);
+            });
+    }
+    ```
+
+    The `UPDATE_TASK` mutation replaces the task in the array in-place:
+
+    ```javascript
+    UPDATE_TASK(state, updatedTask) {
+        const index = state.tasks.findIndex(t => t.id === updatedTask.id);
+        if (index !== -1) {
+            Vue.set(state.tasks, index, updatedTask);
+        }
+    },
+    ```
+
+    On the backend, the controller sets `completed = 1` and saves:
+
+    ```php
+    public function update(Request $request, $id)
+    {
+        $task = Task::find($id);
+
+        if (!$task) {
+            return response()->json(['error' => 'Task not found.'], 404);
+        }
+
+        $task->completed = 1;
+        $task->save();
+
+        return response()->json(['message' => 'Task completed successfully.', 'task' => $task], 200);
+    }
+    ```
+  </Step>
+
+  <Step title="Task is removed from the list">
+    Because `TaskController@index` only returns tasks where `completed = 0`, the completed task will not appear the next time `fetchTasks` is called. The `UPDATE_TASK` mutation updates the local copy in state (including the new `completed` value), so the reactive list reflects the change without an extra round-trip.
+  </Step>
+
+  <Step title="Delete a task">
+    Clicking **Delete** calls `deleteTask(task.id)`, which dispatches to the store:
+
+    ```javascript
+    deleteTask(taskId) {
+        this.$store.dispatch('deleteTask', taskId).catch(error => {
+            console.error('Error deleting task:', error);
+        });
+    },
+    ```
+
+    The store sends a `DELETE` request to `/tasks/{id}` and commits `DELETE_TASK` to remove the task from state:
+
+    ```javascript
+    deleteTask({ commit }, taskId) {
+        axios.delete(`/tasks/${taskId}`)
+            .then(() => {
+                commit('DELETE_TASK', taskId);
+            })
+            .catch(error => {
+                console.error("Error deleting task:", error);
+            });
+    },
+    ```
+
+    The `DELETE_TASK` mutation filters the task out of the array immediately:
+
+    ```javascript
+    DELETE_TASK(state, taskId) {
+        state.tasks = state.tasks.filter(t => t.id !== taskId);
+    }
+    ```
+
+    The backend controller uses `findOrFail` and permanently removes the record:
+
+    ```php
+    public function destroy($id)
+    {
+        $task = Task::findOrFail($id);
+        $task->delete();
+
+        return response()->json(['message' => 'Task deleted successfully'], 200);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Fetching tasks on load
+
+When `TaskList.vue` mounts, it immediately calls `fetchTasks()` to populate the store:
+
+```javascript
+mounted() {
+    this.fetchTasks();
+}
+```
+
+The store action hits `GET /tasks/index` and commits the response via `SET_TASKS`:
+
+```javascript
+fetchTasks({ commit }, showAll = false) {
+    try {
+        axios.get('/tasks/index', { params: { showAll } })
+        .then(response => {
+            commit('SET_TASKS', response.data);
+        })
+        .catch(error => {
+            console.error("Error adding task:", error);
+        });
+    } catch (error) {
+        console.error("Error fetching tasks:", error);
+    }
+},
+```
+
+The backend returns only incomplete tasks:
+
+```php
+public function index()
+{
+    $tasks = Task::where('completed', 0)->get();
+    return response()->json($tasks);
+}
+```
+
+## Vuex store state shape
+
+The store holds a single `tasks` array:
+
+```javascript
+state: {
+    tasks: []
+},
+```
+
+All four mutations (`ADD_TASK`, `UPDATE_TASK`, `SET_TASKS`, `DELETE_TASK`) operate on this array. A `tasks` getter is also exposed for convenience:
+
+```javascript
+getters: {
+    tasks: state => state.tasks
+}
+```
+
+The component accesses the state directly via `mapState`:
+
+```javascript
+computed: {
+    ...mapState(['tasks'])
+},
+```

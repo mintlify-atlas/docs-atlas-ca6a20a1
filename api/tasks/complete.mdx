@@ -1,0 +1,140 @@
+---
+title: "Complete a task"
+description: "Marks a task as completed by setting its completed flag to 1. The task will no longer appear in the active task list."
+---
+
+<Note>
+  This endpoint requires an active authenticated session. Unauthenticated requests are redirected to the login page.
+</Note>
+
+## Endpoint
+
+```
+PUT /tasks/{id}/complete
+```
+
+## Description
+
+Finds a task by its `id` and sets `completed = 1`, then returns the updated task object in the response.
+
+<Note>
+  Once a task is marked as completed, it is excluded from the `GET /tasks/index` response, which filters on `completed = 0`. The task will disappear from the active task list the next time `fetchTasks` is called.
+</Note>
+
+## Path parameters
+
+<ParamField path="id" type="integer" required>
+  The unique identifier of the task to mark as completed.
+</ParamField>
+
+## Response
+
+Returns a JSON object with a confirmation message and the updated task.
+
+### Response fields
+
+<ResponseField name="message" type="string">
+  A confirmation string. Value: `"Task completed successfully."`
+</ResponseField>
+
+<ResponseField name="task" type="object">
+  The full task object after the update.
+
+  <Expandable title="task properties">
+    <ResponseField name="id" type="integer">
+      Unique identifier for the task.
+    </ResponseField>
+
+    <ResponseField name="user_id" type="integer">
+      ID of the user the task is assigned to.
+    </ResponseField>
+
+    <ResponseField name="title" type="string">
+      Title of the task.
+    </ResponseField>
+
+    <ResponseField name="description" type="string">
+      Description of the task.
+    </ResponseField>
+
+    <ResponseField name="completed" type="integer">
+      Completion flag. Will be `1` after this operation.
+    </ResponseField>
+
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of when the task was created.
+    </ResponseField>
+
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of when the task was last updated.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example response
+
+```json
+{
+  "message": "Task completed successfully.",
+  "task": {
+    "id": 1,
+    "user_id": 3,
+    "title": "Review pull request",
+    "description": "Check the open PR for the billing module.",
+    "completed": 1,
+    "created_at": "2026-03-18T10:00:00.000000Z",
+    "updated_at": "2026-03-18T12:45:00.000000Z"
+  }
+}
+```
+
+## Error response
+
+If no task with the given `id` exists:
+
+```json
+{
+  "error": "Task not found."
+}
+```
+
+HTTP status: `404`
+
+## Controller code
+
+```php
+// app/Http/Controllers/TaskController.php
+
+// Actualizar tarea
+public function update(Request $request, $id)
+{
+   // Buscar la tarea
+    $task = Task::find($id);
+
+    if (!$task) {
+        return response()->json(['error' => 'Task not found.'], 404);
+    }
+
+    // Actualizar el estado 'completed' a 1
+    $task->completed = 1;
+    $task->save();
+
+    return response()->json(['message' => 'Task completed successfully.', 'task' => $task], 200);
+}
+```
+
+## Frontend Axios call
+
+```javascript
+// resources/js/store.js — completeTask action
+
+completeTask({ commit }, taskId) {
+    axios.put(`/tasks/${taskId}/complete`)
+        .then(response => {
+            commit('UPDATE_TASK', response.data.task); // Actualizar la tarea
+        })
+        .catch(error => {
+            console.error("Error completing task:", error);
+        });
+}
+```

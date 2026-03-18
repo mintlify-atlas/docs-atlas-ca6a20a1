@@ -1,0 +1,145 @@
+---
+title: "Installation"
+description: "Step-by-step guide to clone, configure, and run Prueba Soporte on your local machine."
+---
+
+Follow the steps below to get a local instance of Prueba Soporte running. Complete the [Requirements](/getting-started/requirements) checklist before you begin.
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the project and navigate into the directory.
+
+    ```bash
+    git clone <repository-url> prueba-soporte
+    cd prueba-soporte
+    ```
+  </Step>
+
+  <Step title="Install PHP dependencies">
+    Install all Composer packages defined in `composer.json`.
+
+    ```bash
+    composer install
+    ```
+
+    <Note>
+      On production deployments, use `composer install --no-dev --optimize-autoloader` to skip development packages.
+    </Note>
+  </Step>
+
+  <Step title="Install JavaScript dependencies">
+    Install all npm packages defined in `package.json`.
+
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Copy the environment file">
+    Create your local `.env` file from the provided example.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Then open `.env` and update the database credentials to match your local setup. See [Configuration](/getting-started/configuration) for a full description of every variable.
+
+    ```bash
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=prueba_soporte
+    DB_USERNAME=root
+    DB_PASSWORD=
+    ```
+  </Step>
+
+  <Step title="Generate the application key">
+    Generate a unique `APP_KEY` and write it to `.env`.
+
+    ```bash
+    php artisan key:generate
+    ```
+  </Step>
+
+  <Step title="Create the database">
+    Create the `prueba_soporte` database in MySQL before running migrations.
+
+    <CodeGroup>
+
+    ```bash MySQL CLI
+    mysql -u root -p -e "CREATE DATABASE prueba_soporte CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    ```
+
+    ```bash SQLite (alternative)
+    touch database/database.sqlite
+    ```
+
+    </CodeGroup>
+
+    <Note>
+      If using SQLite, also set `DB_CONNECTION=sqlite` and `DB_DATABASE=/absolute/path/to/database/database.sqlite` in your `.env` file.
+    </Note>
+  </Step>
+
+  <Step title="Run database migrations">
+    Apply all migrations, including the `tasks` table created in `2024_09_09_123452_create_task.php`.
+
+    ```bash
+    php artisan migrate
+    ```
+
+    <Warning>
+      Running `php artisan migrate:fresh` on an existing database will drop all tables and all data. Use only on a fresh installation.
+    </Warning>
+  </Step>
+
+  <Step title="Build front-end assets">
+    Compile Vue.js components and CSS using Laravel Mix.
+
+    <CodeGroup>
+
+    ```bash Development
+    npm run dev
+    ```
+
+    ```bash Production
+    npm run prod
+    ```
+
+    ```bash Watch mode
+    npm run watch
+    ```
+
+    </CodeGroup>
+
+    <Tip>
+      Use `npm run watch` during active development. It rebuilds assets automatically whenever a source file changes.
+    </Tip>
+  </Step>
+
+  <Step title="Start the development server">
+    Start the Laravel built-in server.
+
+    ```bash
+    php artisan serve
+    ```
+
+    The application is now available at [http://localhost:8000](http://localhost:8000). The root route (`/`) renders the login page. After authenticating, navigate to `/tasks` to use the task manager.
+  </Step>
+</Steps>
+
+## Verify the installation
+
+Once the server is running, confirm the following routes are accessible:
+
+| Route | Description |
+|---|---|
+| `/` | Login page |
+| `/dashboard` | Dashboard (requires authentication) |
+| `/tasks` | Task list view (requires authentication) |
+| `/tasks/index` | JSON endpoint returning incomplete tasks |
+
+<Tip>
+  Register a user account via `/register` before attempting to create tasks. Tasks are assigned to existing users by email address.
+</Tip>

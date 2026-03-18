@@ -1,0 +1,66 @@
+---
+title: "Introduction"
+description: "A Laravel 11 + Vue.js task management application with user authentication, task assignment, and a JSON API backend."
+---
+
+## What is Prueba Soporte?
+
+Prueba Soporte is a full-stack task management web application built with **Laravel 11** on the backend and **Vue.js** on the frontend. It allows authenticated users to create, assign, complete, and delete tasks through a clean interface backed by a RESTful JSON API.
+
+The application was refactored and upgraded from legacy Laravel/Vue versions to modern standards — Laravel 11, PHP 8.3, and Vue.js — improving reliability, code maintainability, and feature completeness.
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="User authentication" icon="lock" href="/features/authentication">
+    Secure login and registration powered by Laravel Breeze with session-based auth.
+  </Card>
+  <Card title="Task management" icon="list-check" href="/features/task-management">
+    Create, complete, and delete tasks with real-time UI updates via Vuex state management.
+  </Card>
+  <Card title="Task assignment" icon="user-check" href="/features/task-assignment">
+    Assign tasks to registered users by email address. Each task is linked to a user account.
+  </Card>
+  <Card title="JSON API backend" icon="code" href="/api/overview">
+    All task operations are handled by a Laravel JSON API consumed by the Vue.js frontend via Axios.
+  </Card>
+</CardGroup>
+
+## Technology stack
+
+| Layer | Technology |
+|---|---|
+| Backend framework | Laravel 11 |
+| PHP version | PHP 8.2+ |
+| Frontend framework | Vue.js 2 |
+| State management | Vuex 3 |
+| HTTP client | Axios |
+| Authentication | Laravel Breeze |
+| Database ORM | Eloquent |
+| Asset bundler | Laravel Mix / Webpack |
+
+## How it works
+
+The application follows a clear separation between the web layer and the data layer:
+
+1. **Authentication** — Users log in through Laravel Breeze. All task routes are protected by the `auth` middleware.
+2. **Task list** — On page load, the Vue.js `TaskList` component dispatches a `fetchTasks` Vuex action that calls `GET /tasks/index` and populates the reactive task list.
+3. **Task operations** — Creating, completing, and deleting tasks each call dedicated API endpoints. Responses update the Vuex store, which re-renders the UI instantly without a page reload.
+4. **Task filtering** — Only incomplete tasks (`completed = 0`) are shown in the active list.
+
+## Quick navigation
+
+<CardGroup cols={2}>
+  <Card title="Requirements" icon="server" href="/getting-started/requirements">
+    System requirements and dependencies before you install.
+  </Card>
+  <Card title="Installation" icon="download" href="/getting-started/installation">
+    Step-by-step guide to get the application running locally.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/getting-started/configuration">
+    Environment variables and application settings.
+  </Card>
+  <Card title="API reference" icon="book" href="/api/overview">
+    Full reference for all available API endpoints.
+  </Card>
+</CardGroup>

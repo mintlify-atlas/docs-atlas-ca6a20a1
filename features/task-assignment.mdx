@@ -1,0 +1,145 @@
+---
+title: "Task assignment"
+description: "How tasks are assigned to registered users by email address in Prueba Soporte."
+---
+
+Every task must be assigned to a registered user at creation time. The assignment is made by entering the user's **email address** in the task form. The backend looks up the matching user record and stores the association as a foreign key in the `tasks` table.
+
+## Creating a task with an assignment
+
+The task form in `TaskList.vue` includes a field for the assignee's email:
+
+```vue
+<form @submit.prevent="addTask" class="card card-body">
+    <div class="form-group">
+        <input v-model="newTask.title" class="form-control" placeholder="Task Title" required>
+    </div>
+    <div class="form-group">
+        <input v-model="newTask.description" class="form-control" placeholder="Task Description" required>
+    </div>
+    <div class="form-group">
+        <input v-model="newTask.user" class="form-control" placeholder="Assigned User" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Add Task</button>
+</form>
+```
+
+The `newTask` object in component data holds the three fields:
+
+```javascript
+data() {
+    return {
+        newTask: {
+            title: '',
+            description: '',
+            user: ''
+        },
+    };
+},
+```
+
+<Note>
+  The `user` field expects a valid **email address** belonging to a registered user in the system. Entering a name, username, or any other identifier will cause the task creation to fail.
+</Note>
+
+## How the controller resolves the user
+
+When the form is submitted, the Vuex store POSTs to `/tasks`. `TaskController@store` validates all three fields and then queries for the user by email:
+
+```php
+public function store(Request $request)
+{
+    $validated = $request->validate([
+        'title'       => 'required|max:255',
+        'description' => 'required|max:500',
+        'user'        => 'required|email|max:500',
+    ]);
+
+    $user = User::where('email', $validated['user'])->first();
+
+    if ($user) {
+        $task = new Task([
+            'title'       => $validated['title'],
+            'description' => $validated['description'],
+        ]);
+
+        $task->user_id = $user->id;
+
+        $task->save();
+
+        return redirect()->back()->with('success', 'Task created successfully.');
+    } else {
+        return redirect()->back()->withErrors(['user' => 'User not found.']);
+    }
+}
+```
+
+### What happens if the user is not found
+
+If no user with the provided email exists, the controller calls `redirect()->back()->withErrors(...)`. The validation error is returned on the `user` field with the message **"User not found."** The task is not saved.
+
+<Warning>
+  There is no partial-match or suggestion behaviour. The email must match an existing record exactly (case-insensitively, as MySQL performs case-insensitive string comparisons by default). A typo will silently fail with the "User not found" error.
+</Warning>
+
+## Database schema
+
+The `tasks` table stores the assignment as a `user_id` foreign key that references the `users` table:
+
+```php
+Schema::create('tasks', function (Blueprint $table) {
+    $table->id();
+    $table->unsignedBigInteger('user_id'); // Relación con usuarios
+    $table->string('title');
+    $table->text('description');
+    $table->boolean('completed')->default(false);
+    $table->timestamps();
+
+    $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+});
+```
+
+`user_id` is a required (non-nullable) column — every task in the database has exactly one assigned user. The `onDelete('cascade')` constraint means that if a user account is deleted, all of their assigned tasks are also permanently removed.
+
+## Eloquent relationships
+
+The assignment is represented in both models with inverse Eloquent relationships.
+
+**`Task` belongs to a `User`:**
+
+```php
+class Task extends Model
+{
+    use HasFactory;
+    protected $table = 'tasks';
+    protected $guarded = [];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}
+```
+
+**`User` has many `Task` records:**
+
+```php
+public function tasks()
+{
+    return $this->hasMany(Task::class);
+}
+```
+
+This means you can retrieve all tasks for a given user with `$user->tasks`, or traverse to the owner of a task with `$task->user`.
+
+## Displaying the assigned user
+
+In the current implementation, the task list template displays `task.user` directly:
+
+```vue
+<small class="text-muted">Assigned to: {{ task.user }}</small>
+```
+
+<Warning>
+  The API response from `TaskController@index` returns the raw Eloquent model, which includes `user_id` (an integer) but does **not** eager-load the related `User` record. As a result, `task.user` in the Vue template currently renders the numeric user ID rather than the user's name. Fixing this requires eager-loading the relationship in the controller (`Task::with('user')->where(...)`) and updating the template to reference `task.user.name`.
+</Warning>

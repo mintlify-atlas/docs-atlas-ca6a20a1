@@ -1,0 +1,64 @@
+---
+title: "Architecture overview"
+description: "How the layers of the Prueba Soporte task management application connect, from the browser to the database."
+---
+
+Prueba Soporte is a full-stack web application built on **Laravel 11** and **Vue.js 2**. Each request travels through a well-defined chain of layers: the browser renders a Vue component, which reads from and writes to a Vuex store, which communicates with the Laravel backend over HTTP via Axios, where a controller method queries the database through Eloquent and returns a JSON response.
+
+## Layer diagram
+
+```
+Browser
+  └── Vue.js 2 (TaskList.vue)
+        └── Vuex store (store.js)
+              └── Axios HTTP client
+                    └── Laravel Router (routes/web.php)
+                          └── TaskController / ProfileController
+                                └── Eloquent ORM (Task, User models)
+                                      └── MySQL / SQLite database
+```
+
+## Role of each layer
+
+| Layer | Technology | Responsibility |
+|---|---|---|
+| **Browser** | HTML / Bootstrap CSS | Renders the UI and captures user input |
+| **Component** | Vue.js 2 (`TaskList.vue`) | Reactive UI; dispatches Vuex actions on user events |
+| **State management** | Vuex 3 | Single source of truth for the task list; coordinates async HTTP calls |
+| **HTTP client** | Axios 0.19 | Sends authenticated AJAX requests; sets `X-Requested-With` header |
+| **Router** | Laravel 11 (`routes/web.php`) | Maps HTTP verbs + paths to controller methods; enforces `auth` middleware |
+| **Controller** | `TaskController` | Validates input, queries models, returns JSON or redirects |
+| **ORM** | Eloquent (`Task`, `User`) | Maps PHP objects to database rows; defines relationships |
+| **Database** | MySQL or SQLite | Persists `users`, `tasks`, `sessions`, and `password_reset_tokens` tables |
+
+## Technology summary
+
+| Layer | Package / Version |
+|---|---|
+| PHP framework | `laravel/framework` ^11.9 |
+| Authentication scaffolding | `laravel/breeze` ^2.1 |
+| Server-side rendering bridge | `inertiajs/inertia-laravel` ^1.0 |
+| Route helpers (JS) | `tightenco/ziggy` ^2.0 |
+| Vue.js | `vue` ^2.7.16 |
+| State management | `vuex` ^3.6.2 |
+| HTTP client | `axios` ^0.19.2 |
+| Asset bundler | `laravel-mix` ^6.0.49 + Webpack |
+| CSS framework | Bootstrap (via Blade layout) |
+
+<Note>
+  The dashboard page (`/dashboard`) is rendered by Inertia.js, while the task list page (`/tasks`) uses a classic Blade view that mounts the Vue app on a `#app` element.
+</Note>
+
+## Explore the architecture
+
+<CardGroup cols={2}>
+  <Card title="Frontend architecture" icon="layer-group" href="/architecture/frontend">
+    Vue.js component structure, Vuex store, Axios integration, and Laravel Mix configuration.
+  </Card>
+  <Card title="Backend architecture" icon="server" href="/architecture/backend">
+    Laravel routes, TaskController methods, middleware stack, and Inertia.js usage.
+  </Card>
+  <Card title="Database" icon="database" href="/architecture/database">
+    Schema for the `tasks` and `users` tables, foreign key relationships, and Eloquent model definitions.
+  </Card>
+</CardGroup>

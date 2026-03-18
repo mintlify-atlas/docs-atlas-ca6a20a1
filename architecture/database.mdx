@@ -1,0 +1,215 @@
+---
+title: "Database"
+description: "Schema for the tasks and users tables, foreign key relationships, and Eloquent model definitions for Prueba Soporte."
+---
+
+Prueba Soporte uses a relational database (MySQL or SQLite) managed entirely through Laravel Eloquent migrations. There are four tables created by the initial migrations: `users`, `password_reset_tokens`, `sessions`, and `tasks`.
+
+## Entity relationship
+
+```
+users
+  id (PK)
+  name
+  email (unique)
+  email_verified_at
+  password
+  remember_token
+  created_at
+  updated_at
+      |
+      | 1
+      |
+      | (user_id FK → users.id, CASCADE DELETE)
+      |
+      | N
+  tasks
+    id (PK)
+    user_id (FK)
+    title
+    description
+    completed
+    created_at
+    updated_at
+```
+
+One user can own many tasks. When a user is deleted, all of their tasks are automatically deleted via the `CASCADE` constraint on the foreign key.
+
+## Table schemas
+
+### `users` table
+
+Created by migration `0001_01_01_000000_create_users_table.php`.
+
+```php
+Schema::create('users', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->string('email')->unique();
+    $table->timestamp('email_verified_at')->nullable();
+    $table->string('password');
+    $table->rememberToken();
+    $table->timestamps();
+});
+```
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `bigint unsigned` | PK, auto-increment | Primary key |
+| `name` | `varchar(255)` | NOT NULL | Display name |
+| `email` | `varchar(255)` | NOT NULL, UNIQUE | Login email |
+| `email_verified_at` | `timestamp` | nullable | Set when email is verified |
+| `password` | `varchar(255)` | NOT NULL | Bcrypt hash (cast as `hashed` in model) |
+| `remember_token` | `varchar(100)` | nullable | "Remember me" session token |
+| `created_at` | `timestamp` | nullable | Managed by Eloquent |
+| `updated_at` | `timestamp` | nullable | Managed by Eloquent |
+
+### `tasks` table
+
+Created by migration `2024_09_09_123452_create_task.php`.
+
+```php
+Schema::create('tasks', function (Blueprint $table) {
+    $table->id();
+    $table->unsignedBigInteger('user_id'); // Relación con usuarios
+    $table->string('title');
+    $table->text('description');
+    $table->boolean('completed')->default(false); // Estado de la tarea (completada o no)
+    $table->timestamps();
+
+    // Índice y clave foránea
+    $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+});
+```
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `bigint unsigned` | PK, auto-increment | Primary key |
+| `user_id` | `bigint unsigned` | NOT NULL, FK → `users.id` | Owning user |
+| `title` | `varchar(255)` | NOT NULL | Task title |
+| `description` | `longtext` | NOT NULL | Task description |
+| `completed` | `tinyint(1)` | NOT NULL, DEFAULT `0` | `0` = pending, `1` = completed |
+| `created_at` | `timestamp` | nullable | Managed by Eloquent |
+| `updated_at` | `timestamp` | nullable | Managed by Eloquent |
+
+<Note>
+  The `TaskController@index` method filters tasks with `Task::where('completed', 0)->get()`, so only pending tasks are ever returned to the frontend. Completed tasks remain in the database but are not exposed through the API.
+</Note>
+
+### Supporting tables
+
+The users migration also creates two auxiliary tables:
+
+**`password_reset_tokens`** — Stores one-time tokens for the password reset flow.
+
+```php
+Schema::create('password_reset_tokens', function (Blueprint $table) {
+    $table->string('email')->primary();
+    $table->string('token');
+    $table->timestamp('created_at')->nullable();
+});
+```
+
+**`sessions`** — Stores database-backed PHP sessions (used when `SESSION_DRIVER=database`).
+
+```php
+Schema::create('sessions', function (Blueprint $table) {
+    $table->string('id')->primary();
+    $table->foreignId('user_id')->nullable()->index();
+    $table->string('ip_address', 45)->nullable();
+    $table->text('user_agent')->nullable();
+    $table->longText('payload');
+    $table->integer('last_activity')->index();
+});
+```
+
+## Eloquent models
+
+### Task model
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Task extends Model
+{
+    use HasFactory;
+    protected $table = 'tasks';
+    protected $guarded = [];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}
+```
+
+**Key properties:**
+- `$table = 'tasks'` — explicit table name (matches the default convention but stated explicitly).
+- `$guarded = []` — no columns are guarded from mass assignment. All columns can be filled via `new Task([...])` or `Task::create([...])`.
+- `user()` — defines a `belongsTo` relationship to `User` via the `user_id` foreign key.
+
+<Warning>
+  Setting `$guarded = []` disables all mass-assignment protection. Any column in the `tasks` table can be filled via a mass-assignment call. Consider switching to an explicit `$fillable` array (`['title', 'description', 'user_id', 'completed']`) to restrict what can be set.
+</Warning>
+
+### User model
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+
+class User extends Authenticatable
+{
+    use HasFactory, Notifiable;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
+
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
+}
+```
+
+**Key properties:**
+- Extends `Authenticatable` — provides authentication logic, session management, and password hashing support.
+- `$fillable` — only `name`, `email`, and `password` can be mass-assigned.
+- `$hidden` — `password` and `remember_token` are excluded from JSON serialization (e.g. in API responses).
+- `casts()` — `email_verified_at` is returned as a Carbon datetime object; `password` is automatically hashed when set.
+- `tasks()` — defines a `hasMany` relationship to `Task`. Calling `$user->tasks` returns all tasks owned by that user.
+
+## Relationship summary
+
+| Relationship | Direction | Method | Foreign key |
+|---|---|---|---|
+| `Task` belongs to `User` | Many → One | `Task::user()` | `tasks.user_id` |
+| `User` has many `Task` | One → Many | `User::tasks()` | `tasks.user_id` |
+
+The `onDelete('cascade')` constraint on `tasks.user_id` ensures that deleting a user from the `users` table automatically removes all associated rows from the `tasks` table at the database level, independently of the Eloquent relationship.

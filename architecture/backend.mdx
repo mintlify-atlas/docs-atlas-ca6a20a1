@@ -1,0 +1,290 @@
+---
+title: "Backend architecture"
+description: "Laravel 11 routing, TaskController methods, middleware stack, and Inertia.js integration for Prueba Soporte."
+---
+
+The backend follows the standard Laravel MVC pattern. Routes are defined in `routes/web.php`, requests are handled by controllers in `app/Http/Controllers/`, and data access is managed by Eloquent models in `app/Models/`.
+
+## MVC structure
+
+```
+app/
+├── Http/
+│   └── Controllers/
+│       ├── TaskController.php     # CRUD operations for tasks
+│       └── ProfileController.php  # User profile management (Breeze)
+app/
+└── Models/
+    ├── Task.php                   # Eloquent model for tasks
+    └── User.php                   # Eloquent model for users
+routes/
+└── web.php                        # All HTTP routes
+```
+
+## Route table
+
+All routes are defined in `routes/web.php`. Routes under the `auth` middleware group require the user to be authenticated.
+
+| Method | Path | Controller / Closure | Middleware | Route name |
+|---|---|---|---|---|
+| `GET` | `/` | Inertia `Auth:Login` render | — | — |
+| `GET` | `/dashboard` | Inertia `Dashboard` render | `auth`, `verified` | `dashboard` |
+| `GET` | `/profile` | `ProfileController@edit` | `auth` | `profile.edit` |
+| `PATCH` | `/profile` | `ProfileController@update` | `auth` | `profile.update` |
+| `DELETE` | `/profile` | `ProfileController@destroy` | `auth` | `profile.destroy` |
+| `GET` | `/tasks/index` | `TaskController@index` | `auth` | `task.index` |
+| `POST` | `/tasks` | `TaskController@store` | `auth` | — |
+| `PUT` | `/tasks/{id}/complete` | `TaskController@update` | `auth` | — |
+| `DELETE` | `/tasks/{id}` | `TaskController@destroy` | `auth` | — |
+| `GET` | `/tasks` | Returns `tasks` Blade view | `auth` | `tasks` |
+
+```php
+<?php
+
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TaskController;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+
+Route::get('/', function () {
+    return Inertia::render('Auth:Login', [
+        'canLogin' => Route::has('login'),
+        'canRegister' => Route::has('register'),
+        'laravelVersion' => Application::VERSION,
+        'phpVersion' => PHP_VERSION,
+    ]);
+});
+
+Route::get('/dashboard', function () {
+    return Inertia::render('Dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Rutas para las operaciones CRUD de las tareas (en API)
+    Route::get('/tasks/index', [TaskController::class, 'index'])->name('task.index');
+    Route::post('/tasks', [TaskController::class, 'store']);
+    Route::put('/tasks/{id}/complete', [TaskController::class, 'update']); 
+    Route::delete('/tasks/{id}', [TaskController::class, 'destroy']);
+
+    // Ruta para la vista de tareas (en la web)
+    Route::get('/tasks', function () {
+        return view('tasks');
+    })->name('tasks');
+});
+
+require __DIR__.'/auth.php';
+```
+
+<Note>
+  Authentication routes (login, register, password reset, email verification) are loaded from `routes/auth.php` via the `require` at the bottom of `web.php`. This file is scaffolded by Laravel Breeze and is not shown here.
+</Note>
+
+## Middleware stack
+
+### `auth` middleware
+
+All task-related routes and profile routes are wrapped in `Route::middleware('auth')->group(...)`. This middleware redirects unauthenticated requests to the login page. The `TaskController` itself does not apply any additional middleware — protection is entirely route-level.
+
+### `verified` middleware
+
+The `/dashboard` route adds the `verified` middleware, which requires the authenticated user's email address to have been verified. The `User` model has `email_verified_at` nullable, so verification is possible but not enforced for task routes.
+
+## TaskController
+
+`app/Http/Controllers/TaskController.php` handles all four CRUD operations for tasks.
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Task;
+use App\Models\User;
+use Illuminate\Http\Request;
+
+class TaskController extends Controller
+{
+    public function index()
+    {    
+        $tasks = Task::where('completed', 0)->get();
+        return response()->json($tasks);
+    }
+
+
+    public function store(Request $request)
+    {
+        // Validar los datos
+        $validated = $request->validate([
+            'title' => 'required|max:255',
+            'description' => 'required|max:500',
+            'user' => 'required|email|max:500',
+        ]);
+
+        $user = User::where('email', $validated['user'])->first();
+
+        if ($user) {
+            $task = new Task([
+                'title' => $validated['title'],
+                'description' => $validated['description'],
+            ]);
+
+            $task->user_id = $user->id;
+
+            $task->save();
+
+            return redirect()->back()->with('success', 'Task created successfully.');
+        } else {
+            return redirect()->back()->withErrors(['user' => 'User not found.']);
+        }
+    }
+
+
+    // Actualizar tarea
+    public function update(Request $request, $id)
+    {
+       // Buscar la tarea
+        $task = Task::find($id);
+
+        if (!$task) {
+            return response()->json(['error' => 'Task not found.'], 404);
+        }
+
+        // Actualizar el estado 'completed' a 1
+        $task->completed = 1;
+        $task->save();
+
+        return response()->json(['message' => 'Task completed successfully.', 'task' => $task], 200);
+    }
+    
+
+    // Eliminar tarea
+    public function destroy($id)
+    {
+        $task = Task::findOrFail($id);
+        $task->delete();
+    
+        return response()->json(['message' => 'Task deleted successfully'], 200);
+    }
+}
+```
+
+### Method details
+
+<Tabs>
+  <Tab title="index">
+    Returns all tasks where `completed = 0` as a JSON array. Does not filter by the authenticated user — all pending tasks across all users are returned.
+
+    ```php
+    public function index()
+    {    
+        $tasks = Task::where('completed', 0)->get();
+        return response()->json($tasks);
+    }
+    ```
+
+    **Response:** `200 OK` — JSON array of task objects.
+
+    <Warning>
+      This endpoint returns tasks for all users, not just the authenticated user. There is no scoping by `auth()->id()`.
+    </Warning>
+  </Tab>
+  <Tab title="store">
+    Validates `title`, `description`, and `user` (an email address). Looks up the user by email and assigns `user_id` before saving. Returns a redirect rather than JSON.
+
+    ```php
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'title' => 'required|max:255',
+            'description' => 'required|max:500',
+            'user' => 'required|email|max:500',
+        ]);
+
+        $user = User::where('email', $validated['user'])->first();
+
+        if ($user) {
+            $task = new Task([
+                'title' => $validated['title'],
+                'description' => $validated['description'],
+            ]);
+            $task->user_id = $user->id;
+            $task->save();
+
+            return redirect()->back()->with('success', 'Task created successfully.');
+        } else {
+            return redirect()->back()->withErrors(['user' => 'User not found.']);
+        }
+    }
+    ```
+
+    **Validation rules:**
+
+    | Field | Rules |
+    |---|---|
+    | `title` | required, max 255 characters |
+    | `description` | required, max 500 characters |
+    | `user` | required, valid email format, max 500 characters |
+
+    **Response:** Redirect back with a flash `success` message on success, or validation errors if the user email is not found.
+
+    <Note>
+      The `store` method returns a redirect (not JSON), while the Vuex `addTask` action expects `response.data` to commit to the store. The `ADD_TASK` mutation will therefore receive `undefined` after a successful create.
+    </Note>
+  </Tab>
+  <Tab title="update">
+    Marks a task as completed by setting `completed = 1`. This is the only field updated — the route name `/tasks/{id}/complete` reflects the single-purpose design.
+
+    ```php
+    public function update(Request $request, $id)
+    {
+        $task = Task::find($id);
+
+        if (!$task) {
+            return response()->json(['error' => 'Task not found.'], 404);
+        }
+
+        $task->completed = 1;
+        $task->save();
+
+        return response()->json(['message' => 'Task completed successfully.', 'task' => $task], 200);
+    }
+    ```
+
+    **Response:** `200 OK` — `{ message: string, task: object }`. Returns `404` if the task ID does not exist.
+  </Tab>
+  <Tab title="destroy">
+    Permanently deletes a task. Uses `findOrFail` which automatically returns a `404` response if the ID does not exist.
+
+    ```php
+    public function destroy($id)
+    {
+        $task = Task::findOrFail($id);
+        $task->delete();
+    
+        return response()->json(['message' => 'Task deleted successfully'], 200);
+    }
+    ```
+
+    **Response:** `200 OK` — `{ message: "Task deleted successfully" }`.
+  </Tab>
+</Tabs>
+
+## Inertia.js usage
+
+Inertia.js (`inertiajs/inertia-laravel` ^1.0) is used for two server-rendered pages:
+
+| Route | Inertia component |
+|---|---|
+| `GET /` | `Auth:Login` — the login page with optional registration link, Laravel version, and PHP version passed as props |
+| `GET /dashboard` | `Dashboard` — the authenticated user dashboard |
+
+These Inertia pages are separate from the Vue task list. The task list at `GET /tasks` returns a classic Blade view (`resources/views/tasks.blade.php`) which embeds the `#app` element that the Vue app mounts onto.
+
+<Tip>
+  Inertia.js acts as a bridge between Laravel controllers and front-end components. The server returns an Inertia response (JSON with component name + props) instead of a full HTML page, and the Inertia client swaps the component without a full page reload.
+</Tip>

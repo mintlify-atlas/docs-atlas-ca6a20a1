@@ -1,0 +1,92 @@
+---
+title: "Register"
+description: "Creates a new user account, logs in the user, and redirects to the task list."
+---
+
+## Endpoint
+
+```
+POST /register
+```
+
+**Middleware:** `guest` — only accessible when the user is not already authenticated. Authenticated users will be redirected away.
+
+## Request
+
+### Parameters
+
+<ParamField body="name" type="string" required>
+  The user's display name. Maximum 255 characters.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  The user's email address. Must be a valid email, lowercase, unique across all registered accounts, and no longer than 255 characters.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's chosen password. Must satisfy Laravel's default password rules: minimum 8 characters. Must match `password_confirmation`.
+</ParamField>
+
+<ParamField body="password_confirmation" type="string" required>
+  Confirmation of the password. Must be identical to the `password` field.
+</ParamField>
+
+## Response
+
+This endpoint does not return a JSON body. It responds with HTTP redirects.
+
+| Outcome | Redirect |
+|---|---|
+| Successful registration | `/tasks` |
+| Validation failure | Back to `/register` with errors in the session |
+
+On success, the user is automatically logged in. A `Set-Cookie` header is returned with the Laravel session cookie for immediate use in subsequent requests. A `Registered` event is fired, which can trigger email verification depending on the application configuration.
+
+## Example
+
+<CodeGroup>
+
+```bash Register a new user
+curl -X POST https://your-app.test/register \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -c cookies.txt \\
+  -d "name=Jane+Doe&email=jane@example.com&password=supersecret&password_confirmation=supersecret"
+```
+
+</CodeGroup>
+
+## Validation Rules
+
+The following rules are enforced server-side in `RegisteredUserController::store`:
+
+```php
+$request->validate([
+    'name'     => 'required|string|max:255',
+    'email'    => 'required|string|lowercase|email|max:255|unique:users',
+    'password' => ['required', 'confirmed', Rules\Password::defaults()],
+]);
+```
+
+## Validation Errors
+
+When calling this endpoint from a JavaScript client (with `Accept: application/json`), a `422 Unprocessable Entity` response is returned on failure:
+
+```json
+{
+  "message": "The email has already been taken.",
+  "errors": {
+    "email": ["The email has already been taken."]
+  }
+}
+```
+
+Common validation error fields:
+
+| Field | Example error |
+|---|---|
+| `name` | `The name field is required.` |
+| `email` | `The email has already been taken.` |
+| `email` | `The email field must be a valid email address.` |
+| `password` | `The password field must be at least 8 characters.` |
+| `password` | `The password field confirmation does not match.` |

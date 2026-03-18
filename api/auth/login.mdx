@@ -1,0 +1,96 @@
+---
+title: "Login"
+description: "Authenticates a user with their email and password and creates a session."
+---
+
+<Note>
+  This is a form-based authentication endpoint. It uses Laravel session cookies, not API tokens. All subsequent authenticated requests rely on the session cookie returned by this endpoint.
+</Note>
+
+## Endpoint
+
+```
+POST /login
+```
+
+**Middleware:** `guest` — only accessible when the user is not already authenticated. Authenticated users will be redirected away.
+
+## Request
+
+### Parameters
+
+<ParamField body="email" type="string" required>
+  The user's email address. Must be a valid email format.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's password.
+</ParamField>
+
+<ParamField body="remember" type="boolean">
+  When `true`, extends the session lifetime so the user remains logged in across browser restarts. Defaults to `false`.
+</ParamField>
+
+## Response
+
+This endpoint does not return a JSON body. It responds with HTTP redirects.
+
+| Outcome | Redirect |
+|---|---|
+| Successful authentication | `/tasks` |
+| Validation failure | Back to `/login` with errors in the session |
+| Rate limit exceeded (5 failed attempts) | Back to `/login` with a throttle error on `email` |
+
+On success, a `Set-Cookie` header is returned containing the encrypted Laravel session cookie. Include this cookie in all subsequent requests to maintain the authenticated session.
+
+## Rate Limiting
+
+Failed login attempts are rate-limited per email address and IP address. After **5 consecutive failed attempts**, further requests are blocked until the lockout period expires. The error message on the `email` field will indicate how many seconds remain.
+
+## Example
+
+<CodeGroup>
+
+```bash Basic login
+curl -X POST https://your-app.test/login \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -c cookies.txt \\
+  -d "email=user@example.com&password=secret"
+```
+
+```bash Login with remember me
+curl -X POST https://your-app.test/login \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -c cookies.txt \\
+  -d "email=user@example.com&password=secret&remember=true"
+```
+
+</CodeGroup>
+
+The `-c cookies.txt` flag saves the session cookie to a file for use in subsequent requests.
+
+## Validation Errors
+
+When validation fails, the server redirects back to `/login` and flashes errors into the session. When calling this endpoint from a JavaScript client (with `Accept: application/json`), a `422 Unprocessable Entity` response is returned instead:
+
+```json
+{
+  "message": "The email field is required.",
+  "errors": {
+    "email": ["The email field is required."]
+  }
+}
+```
+
+If credentials are incorrect, the error is attached to the `email` field:
+
+```json
+{
+  "message": "These credentials do not match our records.",
+  "errors": {
+    "email": ["These credentials do not match our records."]
+  }
+}
+```

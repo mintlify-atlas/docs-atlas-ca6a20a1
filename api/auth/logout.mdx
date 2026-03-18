@@ -1,0 +1,72 @@
+---
+title: "Logout"
+description: "Invalidates the current session and logs out the authenticated user."
+---
+
+<Note>
+  This endpoint requires a valid CSRF token. Requests without a matching CSRF token will be rejected with a `419 Page Expired` response. Include the token as the `X-XSRF-TOKEN` header (read from the `XSRF-TOKEN` cookie) or as a `_token` field in the form body.
+</Note>
+
+## Endpoint
+
+```
+POST /logout
+```
+
+**Middleware:** `auth` — only accessible when the user is currently authenticated. Unauthenticated requests will be redirected to `/login`.
+
+## Request
+
+### Parameters
+
+<ParamField header="X-XSRF-TOKEN" type="string" required>
+  CSRF token read from the `XSRF-TOKEN` cookie. Laravel sets this cookie on each response. Pass its decoded value in this header. Alternatively, send the token as a `_token` field in the request body.
+</ParamField>
+
+No additional request body parameters are required.
+
+## Response
+
+This endpoint does not return a JSON body. It responds with an HTTP redirect.
+
+| Outcome | Redirect |
+|---|---|
+| Successful logout | `/` (home page) |
+| Not authenticated | `/login` |
+| Missing / invalid CSRF token | `419 Page Expired` |
+
+On success, three things happen server-side:
+1. The user is logged out via `Auth::guard('web')->logout()`.
+2. The session is fully invalidated (`$request->session()->invalidate()`).
+3. A new CSRF token is generated (`$request->session()->regenerateToken()`).
+
+Any session cookie held by the client is no longer valid after this call.
+
+## Example
+
+<CodeGroup>
+
+```bash Logout with X-XSRF-TOKEN header
+# 1. Read the XSRF-TOKEN cookie value obtained during login
+XSRF_TOKEN=$(grep XSRF-TOKEN cookies.txt | awk '{print $NF}')
+
+# 2. URL-decode and send as the X-XSRF-TOKEN header
+curl -X POST https://your-app.test/logout \\
+  -H "Accept: application/json" \\
+  -H "X-XSRF-TOKEN: ${XSRF_TOKEN}" \\
+  -b cookies.txt
+```
+
+```bash Logout with _token in form body
+curl -X POST https://your-app.test/logout \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -b cookies.txt \\
+  -d "_token=YOUR_CSRF_TOKEN_HERE"
+```
+
+</CodeGroup>
+
+<Warning>
+  After a successful logout the `XSRF-TOKEN` cookie is rotated. Any cached CSRF token must be discarded and re-read from the cookie set on the redirect response before making further state-changing requests.
+</Warning>

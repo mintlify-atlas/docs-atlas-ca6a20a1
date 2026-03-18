@@ -1,0 +1,176 @@
+---
+title: "Authentication"
+description: "How login, registration, and logout work in Prueba Soporte using Laravel Breeze."
+---
+
+Prueba Soporte uses [Laravel Breeze](https://laravel.com/docs/11.x/starter-kits#laravel-breeze) for session-based authentication. All task routes — and the dashboard — are protected by the `auth` middleware, meaning users must be logged in before they can view or manage tasks.
+
+## Route protection
+
+The task and profile routes are wrapped in an `auth` middleware group in `routes/web.php`:
+
+```php
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/tasks/index', [TaskController::class, 'index'])->name('task.index');
+    Route::post('/tasks', [TaskController::class, 'store']);
+    Route::put('/tasks/{id}/complete', [TaskController::class, 'update']);
+    Route::delete('/tasks/{id}', [TaskController::class, 'destroy']);
+
+    Route::get('/tasks', function () {
+        return view('tasks');
+    })->name('tasks');
+});
+```
+
+The dashboard additionally requires email verification via the `verified` middleware:
+
+```php
+Route::get('/dashboard', function () {
+    return Inertia::render('Dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+```
+
+<Note>
+  Unauthenticated requests to any of the above routes are automatically redirected to `/login` by Laravel's authentication middleware.
+</Note>
+
+## Session-based auth flow
+
+Authentication is entirely session-based. On a successful login, Laravel creates a server-side session and issues a session cookie to the browser. Every subsequent request carries that cookie, and Laravel resolves the authenticated user from the session store without requiring tokens or additional headers.
+
+## Login workflow
+
+<Steps>
+  <Step title="Visit the login page">
+    The root URL `/` renders the `Auth:Login` Inertia view. The `guest` middleware group in `routes/auth.php` also exposes the login form directly at `/login`:
+
+    ```php
+    Route::get('login', [AuthenticatedSessionController::class, 'create'])
+        ->name('login');
+    ```
+  </Step>
+
+  <Step title="Submit credentials">
+    The form POSTs to `/login`, handled by `AuthenticatedSessionController@store`. Laravel validates the credentials against the `users` table (email + hashed password).
+
+    ```php
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+    ```
+  </Step>
+
+  <Step title="Session is created">
+    On success, a new session is started, the user is marked as authenticated, and the browser receives a session cookie. The user is redirected to their intended destination (or `/dashboard` by default).
+  </Step>
+
+  <Step title="Access protected routes">
+    With a valid session cookie, the user can access all routes inside the `auth` middleware group — including `/tasks` and all task API endpoints.
+  </Step>
+</Steps>
+
+## Registration workflow
+
+New accounts are created through `/register`, which is also behind the `guest` middleware so already-authenticated users cannot access it:
+
+```php
+Route::get('register', [RegisteredUserController::class, 'create'])
+    ->name('register');
+
+Route::post('register', [RegisteredUserController::class, 'store']);
+```
+
+The registration form collects a name, email address, and password. On success, the user is automatically logged in and redirected to the dashboard.
+
+<Tip>
+  The `User` model marks `email_verified_at` as a `datetime` cast, so email verification is supported. The dashboard route enforces verification via the `verified` middleware — users who have not verified their email will be redirected to the verification notice page.
+</Tip>
+
+## Password reset
+
+Full password reset is available via the following routes, all behind the `guest` middleware:
+
+```php
+// Request a reset link
+Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
+    ->name('password.request');
+
+Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
+    ->name('password.email');
+
+// Set a new password using the token from the email
+Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
+    ->name('password.reset');
+
+Route::post('reset-password', [NewPasswordController::class, 'store'])
+    ->name('password.store');
+```
+
+Laravel sends a signed reset link to the user's email address. Clicking the link loads the reset form, which accepts the new password and logs the user in upon success.
+
+## Email verification
+
+For authenticated users who have not yet verified their email, the following routes are available:
+
+```php
+Route::get('verify-email', EmailVerificationPromptController::class)
+    ->name('verification.notice');
+
+Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
+    ->middleware(['signed', 'throttle:6,1'])
+    ->name('verification.verify');
+
+Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+    ->middleware('throttle:6,1')
+    ->name('verification.send');
+```
+
+The verification link is signed and rate-limited to 6 requests per minute to prevent abuse.
+
+## Password confirmation
+
+Sensitive operations can require the user to re-enter their current password before proceeding:
+
+```php
+Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
+    ->name('password.confirm');
+
+Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
+```
+
+## Profile management
+
+Authenticated users can manage their account through three profile endpoints:
+
+| Method | Route | Action |
+|--------|-------|--------|
+| `GET` | `/profile` | Show the profile edit form |
+| `PATCH` | `/profile` | Update name, email, or password |
+| `DELETE` | `/profile` | Permanently delete the account |
+
+```php
+Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+```
+
+Password changes are also available via a dedicated endpoint:
+
+```php
+Route::put('password', [PasswordController::class, 'update'])->name('password.update');
+```
+
+## Logout
+
+Logging out destroys the current session and invalidates the session cookie:
+
+```php
+Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->name('logout');
+```
+
+<Note>
+  Logout uses a `POST` request (not `GET`) to protect against cross-site request forgery. Breeze includes the required CSRF token automatically in all forms.
+</Note>

@@ -1,0 +1,270 @@
+---
+title: "Frontend architecture"
+description: "Vue.js 2 component structure, Vuex store design, Axios communication, and the Laravel Mix build pipeline for Prueba Soporte."
+---
+
+The frontend is a Vue.js 2 single-page component embedded in a Blade view. All state is managed centrally by Vuex, and all HTTP calls to the Laravel backend are made through Axios actions in the store.
+
+## Component structure
+
+There is one primary component in this application:
+
+```
+resources/js/
+├── app.js               # Vue bootstrap + Axios config
+├── store.js             # Vuex store (state, mutations, actions, getters)
+└── Components/
+    └── TaskList.vue     # Main UI component
+```
+
+### TaskList.vue
+
+`TaskList.vue` is the only user-facing Vue component. It renders an unordered list of pending tasks and a form to add new ones.
+
+**Template responsibilities:**
+- Iterates over `tasks` from the Vuex state with `v-for`
+- Renders each task's `title`, `description`, and assigned `user`
+- Provides a **Complete** button that dispatches `completeTask(task.id)`
+- Provides a **Delete** button that dispatches `deleteTask(task.id)`
+- Renders a form bound with `v-model` to a local `newTask` object (`title`, `description`, `user`)
+- On form submit, calls the local `addTask()` method which validates fields before dispatching to the store
+
+```vue
+<template>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Task List</h1>
+
+        <ul class="list-group mb-4">
+            <li v-for="task in tasks" :key="task.id" class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <h5  class="mb-1">{{ task.title }}</h5>
+                    <p class="mb-1">{{ task.description }}</p>
+                    <small class="text-muted">Assigned to: {{ task.user }}</small>
+                </div>
+                <div>
+                    <button class="btn btn-success btn-sm mr-2" @click="completeTask(task.id)">Complete</button>
+                    <button class="btn btn-danger btn-sm" @click="deleteTask(task.id)">Delete</button>
+                </div>
+            </li>
+        </ul>
+
+        <form @submit.prevent="addTask" class="card card-body">
+            <div class="form-group">
+                <input v-model="newTask.title" class="form-control" placeholder="Task Title" required>
+            </div>
+            <div class="form-group">
+                <input v-model="newTask.description" class="form-control" placeholder="Task Description" required>
+            </div>
+            <div class="form-group">
+                <input v-model="newTask.user" class="form-control" placeholder="Assigned User" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Add Task</button>
+        </form>
+    </div>
+</template>
+```
+
+**Script responsibilities:**
+- Maps `tasks` from Vuex state via `mapState`
+- Maps `fetchTasks`, `addTask`, `completeTask`, `deleteTask`, `showAssignedTasks`, and `showAllTasks` from Vuex actions via `mapActions`
+- Calls `fetchTasks()` in the `mounted` lifecycle hook to load tasks on page load
+- Local `addTask()` method validates that all three fields are non-empty before dispatching to the store
+
+<Warning>
+  The component defines `mounted` twice — once as a shorthand method property and once as a full lifecycle hook. Only the second definition (the `mounted()` hook) is executed by Vue. The first is overridden.
+</Warning>
+
+## Vuex store
+
+The store is defined in `resources/js/store.js` and registered globally in `app.js`.
+
+<Tabs>
+  <Tab title="State">
+    The store holds a single top-level state property: an array of task objects fetched from the backend.
+
+    ```js
+    state: {
+        tasks: [] // Estado inicial para las tareas
+    },
+    ```
+
+    Each task object in the array mirrors the database row shape returned by the `TaskController`:
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `id` | number | Primary key |
+    | `user_id` | number | Foreign key to the owning user |
+    | `title` | string | Task title |
+    | `description` | string | Task description |
+    | `completed` | boolean | `0` = pending, `1` = complete |
+    | `created_at` | string | ISO timestamp |
+    | `updated_at` | string | ISO timestamp |
+  </Tab>
+  <Tab title="Mutations">
+    Mutations are the only way to synchronously modify state.
+
+    ```js
+    mutations: {
+        ADD_TASK(state, task) {
+            state.tasks.push(task);
+        },
+        UPDATE_TASK(state, updatedTask) {
+            const index = state.tasks.findIndex(t => t.id === updatedTask.id);
+            if (index !== -1) {
+                Vue.set(state.tasks, index, updatedTask);
+            }
+        },
+        SET_TASKS(state, tasks) {
+            state.tasks = tasks;
+        },
+        DELETE_TASK(state, taskId) {
+            state.tasks = state.tasks.filter(t => t.id !== taskId);
+        }
+    },
+    ```
+
+    | Mutation | Payload | Effect |
+    |---|---|---|
+    | `ADD_TASK` | task object | Appends the task to the array |
+    | `UPDATE_TASK` | updated task object | Replaces the matching task in-place using `Vue.set` for reactivity |
+    | `SET_TASKS` | task array | Replaces the entire task list |
+    | `DELETE_TASK` | task ID | Filters out the task with the given ID |
+  </Tab>
+  <Tab title="Actions">
+    Actions handle async HTTP calls via Axios and commit mutations on success.
+
+    ```js
+    actions: {
+        fetchTasks({ commit }, showAll = false) {
+            try {
+                axios.get('/tasks/index', { params: { showAll } })                
+                .then(response => {
+                    commit('SET_TASKS', response.data);
+                })
+                .catch(error => {
+                    console.error("Error adding task:", error);
+                });
+            } catch (error) {
+                console.error("Error fetching tasks:", error);
+            }
+        },
+        addTask({ commit }, task) {
+            axios.post('/tasks', task)
+                .then(response => {
+                    commit('ADD_TASK', response.data);
+                })
+                .catch(error => {
+                    console.error("Error adding task:", error);
+                });
+        },
+        updateTask({ commit }, task) {
+            axios.put(`/tasks/${task.id}`, {
+                title: task.title,
+                description: task.description,
+                completed: task.completed
+            })
+            .then(response => {
+                commit('UPDATE_TASK', response.data);
+            })
+            .catch(error => {
+                console.error("Error updating task:", error);
+            });
+        },
+        deleteTask({ commit }, taskId) {
+            axios.delete(`/tasks/${taskId}`)
+                .then(() => {
+                    commit('DELETE_TASK', taskId);
+                })
+                .catch(error => {
+                    console.error("Error deleting task:", error);
+                });
+        },
+        completeTask({ commit }, taskId) {
+            axios.put(`/tasks/${taskId}/complete`)
+                .then(response => {
+                    commit('UPDATE_TASK', response.data.task);
+                })
+                .catch(error => {
+                    console.error("Error completing task:", error);
+                });
+        }
+    },
+    ```
+
+    | Action | HTTP call | Mutation committed |
+    |---|---|---|
+    | `fetchTasks(showAll)` | `GET /tasks/index?showAll=…` | `SET_TASKS` |
+    | `addTask(task)` | `POST /tasks` | `ADD_TASK` |
+    | `updateTask(task)` | `PUT /tasks/:id` | `UPDATE_TASK` |
+    | `deleteTask(taskId)` | `DELETE /tasks/:id` | `DELETE_TASK` |
+    | `completeTask(taskId)` | `PUT /tasks/:id/complete` | `UPDATE_TASK` |
+
+    <Note>
+      `updateTask` is defined in the store but is not dispatched by `TaskList.vue`. Only `completeTask` is used to mark tasks as done from the UI.
+    </Note>
+  </Tab>
+  <Tab title="Getters">
+    A single getter re-exposes the task array for components that prefer getter syntax over direct state access.
+
+    ```js
+    getters: {
+        tasks: state => state.tasks
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## app.js bootstrapping
+
+`app.js` is the Webpack entry point. It imports Vue, Vuex, the Vuex store instance, the `TaskList` component, and Axios, then mounts the Vue application on the `#app` DOM element.
+
+```js
+import Vue from 'vue';
+import Vuex from 'vuex';
+import TaskList from './Components/TaskList.vue';
+import store from './store';
+import axios from 'axios';
+
+Vue.use(Vuex);
+// Configuración global de Axios
+axios.defaults.baseURL = 'http://127.0.0.1:8000'; // Cambia esto a tu URL base si es necesario
+axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+
+const app = new Vue({
+    el: '#app',
+    store, // Agrega el store a la instancia de Vue
+    components: { TaskList },
+});
+```
+
+**Key bootstrap decisions:**
+- `axios.defaults.baseURL` is set to `http://127.0.0.1:8000` — this must be updated to match the deployed server URL in production.
+- The `X-Requested-With: XMLHttpRequest` header tells Laravel to treat requests as AJAX, which affects how it formats validation error responses.
+- The store is passed directly to the root Vue instance, making it available in all child components via `this.$store`.
+
+<Warning>
+  The hardcoded `baseURL` in `app.js` will fail in any environment other than a local dev server running on port 8000. Use an environment variable (e.g. `process.env.MIX_APP_URL`) for deployments.
+</Warning>
+
+## Build pipeline (Laravel Mix)
+
+Assets are compiled by **Laravel Mix 6** (a Webpack wrapper). The entire build configuration lives in `webpack.mix.js`:
+
+```js
+const mix = require('laravel-mix');
+
+mix.js('resources/js/app.js', 'public/js')
+    .vue();
+```
+
+This single chain:
+1. Takes `resources/js/app.js` as the Webpack entry point
+2. Enables the Vue single-file component (`.vue`) loader
+3. Outputs the compiled bundle to `public/js/app.js`
+
+| npm script | Command | Purpose |
+|---|---|---|
+| `npm run dev` | `webpack` with `NODE_ENV=development` | Development build with source maps |
+| `npm run watch` | Same as dev + `--watch` | Rebuilds on file changes |
+| `npm run hot` | `webpack-dev-server` with HMR | Hot module replacement |
+| `npm run prod` | `webpack` with `NODE_ENV=production` | Minified production bundle |

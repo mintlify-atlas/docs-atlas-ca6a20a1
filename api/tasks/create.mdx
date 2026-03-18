@@ -1,0 +1,99 @@
+---
+title: "Create a task"
+description: "Creates a new task and assigns it to an existing user identified by email address."
+---
+
+<Note>
+  This endpoint requires an active authenticated session. Unauthenticated requests are redirected to the login page.
+</Note>
+
+## Endpoint
+
+```
+POST /tasks
+```
+
+## Description
+
+Validates the request, looks up a user by the provided email address, and creates a new task assigned to that user. On success, the server returns an HTTP `302` redirect back to the previous page. On failure (user not found or validation error), the server redirects back with errors in the session.
+
+<Warning>
+  The `user` field must be the email address of a user who already exists in the database. The endpoint does not create new users. If no matching user is found, the request is redirected back with a `user: User not found.` validation error.
+</Warning>
+
+## Request body
+
+<ParamField body="title" type="string" required>
+  The title of the task. Maximum 255 characters.
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  A detailed description of the task. Maximum 500 characters.
+</ParamField>
+
+<ParamField body="user" type="string" required>
+  The email address of the user to assign the task to. Must be a valid email format and must match an existing user record.
+</ParamField>
+
+## Response
+
+This endpoint does **not** return a JSON body on success. It returns an HTTP `302` redirect to the previous URL (Laravel `redirect()->back()`). The Vue.js frontend does not rely on the redirect body — instead, the component calls `fetchTasks` after submission to refresh the task list.
+
+On failure, the redirect includes session error data which Laravel flashes to the session:
+
+```json
+{
+  "user": ["User not found."]
+}
+```
+
+Validation failures follow the standard Laravel 422 format when called via an AJAX client that sets the `Accept: application/json` header.
+
+## Controller code
+
+```php
+// app/Http/Controllers/TaskController.php
+
+public function store(Request $request)
+{
+    // Validar los datos
+    $validated = $request->validate([
+        'title' => 'required|max:255',
+        'description' => 'required|max:500',
+        'user' => 'required|email|max:500',
+    ]);
+
+    $user = User::where('email', $validated['user'])->first();
+
+    if ($user) {
+        $task = new Task([
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+        ]);
+
+        $task->user_id = $user->id;
+
+        $task->save();
+
+        return redirect()->back()->with('success', 'Task created successfully.');
+    } else {
+        return redirect()->back()->withErrors(['user' => 'User not found.']);
+    }
+}
+```
+
+## Frontend Axios call
+
+```javascript
+// resources/js/store.js — addTask action
+
+addTask({ commit }, task) {
+    axios.post('/tasks', task)
+        .then(response => {
+            commit('ADD_TASK', response.data);
+        })
+        .catch(error => {
+            console.error("Error adding task:", error);
+        });
+},
+```
